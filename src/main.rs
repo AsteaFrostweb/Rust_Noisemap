@@ -1,5 +1,6 @@
 use bevy::prelude::*;
-
+mod noise;
+use noise::*;
 fn main() {
     
     let _ = App::new()
