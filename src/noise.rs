@@ -1,10 +1,10 @@
 
-use std::{clone, fs::File, io::{Write, Read}, path::Path};
+use std::{clone, fs::File, io::{Write, Read}, path::Path, usize};
 
 use libnoise::prelude::*;
 use bevy::{prelude::*, math::f32, render::{texture::ImageSampler, render_resource::{TextureDescriptor, TextureDimension, TextureFormat, Extent3d, TextureUsages}}};
 
-
+const DEPTH_SCALAR: f64 = 0.142;
 
 //-------------------------------------------------------------------Defining Noise Values-------------------------------------------------------------------//
 #[derive(Clone)]
@@ -37,6 +37,11 @@ impl NoiseSource2D for Simplex<2> {
 impl NoiseSource2D for Worley<2> {
     fn sample(&self, point: [f64; 2]) -> f64 {
         return libnoise::Generator::sample(self, point);
+    }
+}
+impl NoiseSource2D for CombinedNoiseGenerator2D {
+    fn sample(&self, point: [f64; 2]) -> f64 {
+        return CombinedNoiseGenerator2D::get_weighted_value(&self, point[0] as i32, point[1] as i32) as f64;
     }
 }
 
@@ -77,18 +82,29 @@ where
 //-------------------------------------------------------------------Defining Combined Nosie Generator 2D-------------------------------------------------------------------//
 pub struct CombinedNoiseGenerator2D
 {
-    perlin_generator: NoiseGenerator2D<Perlin<2>>,
-    simplex_generator: NoiseGenerator2D<Simplex<2>>,
-    worley_generator: NoiseGenerator2D<Worley<2>>
+    pub perlin_generator: NoiseGenerator2D<Perlin<2>>,
+    pub simplex_generator: NoiseGenerator2D<Simplex<2>>,
+    pub worley_generator: NoiseGenerator2D<Worley<2>>,
+    pub perlin_weight: f32,
+    pub simplex_weight: f32,
+    pub worley_weight: f32,
 }
 impl CombinedNoiseGenerator2D
 {
-    pub fn get_combined_value_at_weighted(&self, x: i32, y: i32, perlin_weight: f32, simplex_weight: f32, worley_weight: f32) -> f32
+    pub fn get_value(&self, x: i32, y: i32) -> f32
     {
-        let perlin = self.perlin_generator.get_value_at(x, y) * perlin_weight;
-        let simplex = self.simplex_generator.get_value_at(x, y) * simplex_weight;
-        let worley = self.worley_generator.get_value_at(x, y) * worley_weight;
-        let ratio = 1.0 / (perlin_weight + simplex_weight + worley_weight);
+        let perlin = self.perlin_generator.get_value_at(x, y);
+        let simplex = self.simplex_generator.get_value_at(x, y);
+        let worley = self.worley_generator.get_value_at(x, y);
+        
+        return perlin + simplex + worley;
+    }
+    pub fn get_weighted_value(&self, x: i32, y: i32) -> f32
+    {
+        let perlin = self.perlin_generator.get_value_at(x, y) * self.perlin_weight;
+        let simplex = self.simplex_generator.get_value_at(x, y) * self.simplex_weight;
+        let worley = self.worley_generator.get_value_at(x, y) * self.worley_weight;
+        let ratio = 1.0 / (self.perlin_weight + self.simplex_weight + self.worley_weight);
         return perlin * ratio + simplex * ratio + worley * ratio;
     }
 }
@@ -127,7 +143,6 @@ where
     pub source: S,
     pub values: NoiseValues,
 }
-
 impl<S> NoiseGenerator3D<S>
 where
     S: NoiseSource3D,
@@ -140,7 +155,7 @@ where
         for _ in 0..self.values.octaves {
             let new_x: f32 = x as f32 * frequency;
             let new_y: f32 = y as f32 * frequency;
-            let new_z: f32 = z as f32 * frequency;
+            let new_z: f32 = z as f32 * frequency * DEPTH_SCALAR as f32;
             let sample: f64 = self.source.sample([new_x as f64, new_y as f64, new_z as f64]);
             sum += sample as f32 * amplitude;
 
@@ -156,24 +171,36 @@ where
 //-------------------------------------------------------------------Defining Combined Nosie Generator 3D-------------------------------------------------------------------//
 pub struct CombinedNoiseGenerator3D
 {
-    perlin_generator: NoiseGenerator3D<Perlin<3>>,
-    simplex_generator: NoiseGenerator3D<Simplex<3>>,
-    worley_generator: NoiseGenerator3D<Worley<3>>
+    pub perlin_generator: NoiseGenerator3D<Perlin<3>>,
+    pub simplex_generator: NoiseGenerator3D<Simplex<3>>,
+    pub worley_generator: NoiseGenerator3D<Worley<3>>,
+    pub perlin_weight: f32,
+    pub simplex_weight: f32,
+    pub worley_weight: f32,
 }
 impl CombinedNoiseGenerator3D
 {
-    pub fn get_combined_value_at_weighted(&self, x: i32, y: i32, z: i32, perlin_weight: f32, simplex_weight: f32, worley_weight: f32) -> f32
+    pub fn get_value(&self, x: i32, y: i32, z: i32) -> f32
     {
-        let perlin = self.perlin_generator.get_value_at(x, y, z) * perlin_weight;
-        let simplex = self.simplex_generator.get_value_at(x, y, z) * simplex_weight;
-        let worley = self.worley_generator.get_value_at(x, y, z) * worley_weight;
-        let ratio = 1.0 / (perlin_weight + simplex_weight + worley_weight);
+        let perlin = self.perlin_generator.get_value_at(x, y, z );
+        let simplex = self.simplex_generator.get_value_at(x, y, z);
+        let worley = self.worley_generator.get_value_at(x, y, z);
+        
+        return perlin + simplex + worley;
+    }
+    pub fn get_weighted_value(&self, x: i32, y: i32, z: i32) -> f32
+    {
+        let perlin = self.perlin_generator.get_value_at(x, y, z) * self.perlin_weight;
+        let simplex = self.simplex_generator.get_value_at(x, y, z) * self.simplex_weight;
+        let worley = self.worley_generator.get_value_at(x, y, z) * self.worley_weight;
+        let ratio = 1.0 / (self.perlin_weight + self.simplex_weight + self.worley_weight);
         return perlin * ratio + simplex * ratio + worley * ratio;
     }
 }
 
 
 //-------------------------------------------------------------------Defining Noise Map 2D-------------------------------------------------------------------//
+#[derive(Resource)]
 pub struct NoiseMap2D
 {
     pub width: usize,
@@ -182,37 +209,44 @@ pub struct NoiseMap2D
 } 
 impl NoiseMap2D
 {   
-    fn initialize(&mut self)
+    pub fn from_values(width: usize, height: usize) -> NoiseMap2D
     {
-        self.buffer = Vec::with_capacity(self.width * self.height)        
+        let buffer = vec![0.0 as f32; width * height];                 
+        return NoiseMap2D{ width, height, buffer};
     }
-    fn get_value_at(&self, x: u32, y: u32) -> f32
+    pub fn initialize(&mut self)
+    {
+        self.buffer = vec![0.0; self.width * self.height]        
+    }
+    pub fn get_value_at(&self, x: u32, y: u32) -> f32
     {
         return self.buffer[((y as usize * self.height) + x as usize)]
     }
-    fn set_value_at(&mut self, x: u32, y: u32, value: f32)
+    pub fn set_value_at(&mut self, x: u32, y: u32, value: f32)
     {
         self.buffer[((y as usize * self.height) + x as usize)] = value;
     }
-    fn to_image(&self) -> Image {
+    pub fn to_image(&self) -> Image {
         let mut image = Image {
-            data: Vec::new(),
+            data: Vec::with_capacity(self.buffer.len()),
             texture_descriptor: TextureDescriptor {
                 label: None,
                 size: Extent3d{width: self.width as u32, height: self.height as u32, depth_or_array_layers: 1},
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: TextureDimension::D2,
-                format: TextureFormat::Rgba8UnormSrgb,
+                format: TextureFormat::Rgba8Unorm,
                 usage: TextureUsages::all(),
-                view_formats: &[TextureFormat::Rgba8UnormSrgb],                
+                view_formats: &[TextureFormat::Rgba8Unorm],                
             },
             sampler: ImageSampler::default(),
             texture_view_descriptor: None,
         };
 
         for &value in &self.buffer {
-            let pixel_value = (value * 255.0).round() as u8;
+            
+            let pixel_value = (value * 255.0) as u8;
+            //println!("Assigning pixel value: {} with buffer value: {}", pixel_value, value);
             image.data.push(pixel_value);
             image.data.push(pixel_value);
             image.data.push(pixel_value);
@@ -222,7 +256,7 @@ impl NoiseMap2D
         image
     }
     
-    fn save(&self, path: String) -> Result<bool, std::io::Error> //returns true if sucessfuly saved and false if not
+    pub fn save(&self, path: String) -> Result<bool, std::io::Error> //returns true if sucessfuly saved and false if not
     {
 
         if !Path::new(&path).extension().map_or(false, |ext| ext == "noise2d") {
@@ -244,7 +278,7 @@ impl NoiseMap2D
         Ok(true)
     }
     
-    fn load(path: &str) -> Result<NoiseMap2D, std::io::Error> {
+    pub fn load(path: &str) -> Result<NoiseMap2D, std::io::Error> {
 
         if !Path::new(&path).extension().map_or(false, |ext| ext == "noise2d") {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid file extension"));
@@ -283,6 +317,7 @@ impl NoiseMap2D
 
 
 //-------------------------------------------------------------------Defining Noise Map 3D-------------------------------------------------------------------//
+#[derive(Resource)]
 pub struct NoiseMap3D
 {
     pub width: usize,
@@ -292,24 +327,143 @@ pub struct NoiseMap3D
 }
 impl NoiseMap3D
 {
-    fn initialize(&mut self)
+    pub fn from_values(width: usize, height: usize, depth: usize) -> NoiseMap3D
+    {
+        let buffer = vec![0.0 as f32; width * height * depth];                 
+        return NoiseMap3D{ width, height, depth, buffer};
+    }
+
+    pub fn initialize(&mut self)
     {
         self.buffer = vec![0.0; self.width * self.height * self.depth];        
     }
 
-    fn get_value_at(&self, x: u32, y: u32, z: u32) -> f32
+    pub fn get_value_at(&self, x: u32, y: u32, z: u32) -> f32
     {
         return self.buffer[(z as usize * self.height * self.width) + (y as usize * self.height) + x as usize]
     }
 
-    fn set_value_at(&mut self, x: u32, y: u32, z: u32, value: f32)
+    pub fn set_value_at(&mut self, x: u32, y: u32, z: u32, value: f32)
     {   
         self.buffer[(z as usize * self.height * self.width) + (y as usize * self.height) + x as usize] = value;
     }
 
-    fn to_image(&self) -> Image {
+    pub fn populate(&mut self, noise_generator: &CombinedNoiseGenerator3D)
+    {
+        if self.buffer.is_empty()
+        {
+            self.initialize();
+        }
+        for z in 0..self.depth
+        {
+            for y in 0..self.height
+            {
+                for x in 0..self.width
+                {
+                   self.buffer[(z * self.height * self.width) + (y * self.height as usize) + x] = noise_generator.get_weighted_value(x as i32, y as i32, z  as i32);
+                }
+            }
+        }
+
+    }
+    pub fn populate_from_perlin(&mut self, perlin_generator: &NoiseGenerator3D<Perlin<3>>)
+    {
+        if self.buffer.is_empty()
+        {
+            self.initialize();
+        }
+        for z in 0..self.depth
+        {
+            for y in 0..self.height
+            {
+                for x in 0..self.width
+                {
+                   self.buffer[(z * self.height * self.width) + (y * self.height as usize) + x] = perlin_generator.get_value_at(x as i32, y as i32, z as i32);
+                }
+            }
+        }
+    }
+    pub fn populate_from_simplex(&mut self, simplex_generator: &NoiseGenerator3D<Simplex<3>>)
+    {
+        if self.buffer.is_empty()
+        {
+            self.initialize();
+        }
+        for z in 0..self.depth
+        {
+            for y in 0..self.height
+            {
+                for x in 0..self.width
+                {
+                   self.buffer[(z * self.height * self.width) + (y * self.height as usize) + x] = simplex_generator.get_value_at(x as i32, y as i32, z as i32);
+                }
+            }
+        }
+    }
+    pub fn populate_from_worley(&mut self, worley_generator: &NoiseGenerator3D<Worley<3>>)
+    {
+        if self.buffer.is_empty()
+        {
+            self.initialize();
+        }
+        for z in 0..self.depth
+        {
+            for y in 0..self.height
+            {
+                for x in 0..self.width
+                {
+                   self.buffer[(z * self.height * self.width) + (y * self.height as usize) + x] = worley_generator.get_value_at(x as i32, y as i32, z as i32);
+                }
+            }
+        }
+    }
+
+    pub fn get_slice_x(&self, x_level: u32) -> NoiseMap2D
+    {
+        let mut buffer = Vec::with_capacity(self.depth * self.height);
+        for z in 0..self.depth
+        {
+            for y in 0..self.height
+            {
+                buffer[z * self.depth + y] = self.get_value_at(x_level, y as u32, z as u32);
+            }
+        }
+
+        return  NoiseMap2D{ width: self.height, height: self.depth, buffer };
+    }
+    pub fn get_slice_y(&self, y_level: u32) -> NoiseMap2D
+    {
+        let mut buffer = Vec::with_capacity(self.depth * self.height);
+        for z in 0..self.depth
+        {
+            for x in 0..self.width
+            {
+                buffer[z * self.depth + x] = self.get_value_at(x as u32, y_level, z as u32);
+            }
+        }
+
+        return  NoiseMap2D{ width: self.height, height: self.depth, buffer };
+    }
+    pub fn get_slice_z(&self, z_level: u32) -> NoiseMap2D
+    {
+        let mut temp_buffer: Vec<f32> = vec![0.0 as f32; self.width * self.height];
+        
+        for y in 0..self.height
+        {
+            for x in 0..self.width
+            {
+                //println!("Assigning pixel x:{}, y:{} . Value: {}",x,y, self.get_value_at(x as u32, y as u32, z_level));
+                temp_buffer[y * self.height + x] = self.get_value_at(x as u32, y as u32, z_level)
+            }
+        }
+
+        return  NoiseMap2D{ width: self.width, height: self.height, buffer: temp_buffer };
+    }
+
+
+    pub fn to_image(&self) -> Image {
         let mut image = Image {
-            data: Vec::new(),
+            data: Vec::with_capacity(self.buffer.len()),
             texture_descriptor: TextureDescriptor {
                 label: None,
                 size: Extent3d {
@@ -320,9 +474,9 @@ impl NoiseMap3D
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: TextureDimension::D3, // Use D3 for 3D textures
-                format: TextureFormat::Rgba8UnormSrgb,
+                format: TextureFormat::Rgba8Unorm,
                 usage:TextureUsages::all(),
-                view_formats: &[TextureFormat::Rgba8UnormSrgb],
+                view_formats: &[TextureFormat::Rgba8Unorm],
             },
             sampler: ImageSampler::default(),
             texture_view_descriptor: None,
@@ -339,7 +493,7 @@ impl NoiseMap3D
         image
     }
 
-    fn save(&self, path: String) -> Result<bool, std::io::Error> //returns true if sucessfuly saved and false if not
+    pub fn save(&self, path: String) -> Result<bool, std::io::Error> //returns true if sucessfuly saved and false if not
     {
         if !Path::new(&path).extension().map_or(false, |ext| ext == "noise3d") {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid file extension"));
@@ -361,7 +515,7 @@ impl NoiseMap3D
         Ok(true)
     }
 
-    fn load(path: String) -> Result<NoiseMap3D, std::io::Error> {
+    pub fn load(path: String) -> Result<NoiseMap3D, std::io::Error> {
 
         if !Path::new(&path).extension().map_or(false, |ext| ext == "noise3d") {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid file extension"));
